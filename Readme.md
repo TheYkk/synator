@@ -1,15 +1,15 @@
 # Synator Kubernetes Secret and ConfigMap synchronizer
 
-Synator synchronize your Secrets and ConfigMaps with your all namespaces
+Synator synchronize your Secrets and ConfigMaps with your desired namespaces
 
 # Usage
-Add label `synator/sync=yes` to Secret or ConfigMap.
+Add annotation `synator/sync=yes` to Secret or ConfigMap.
 
 # Triggers
  - When update config or secret
  - When create config or secret
  
-# Build and deeploy
+# Build and deploy
 Build docker image
 
 ```
