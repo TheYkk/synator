@@ -28,9 +28,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: synator
 subjects:
-- kind: ServiceAccount
-  name: synator
-  namespace: default
+  - kind: ServiceAccount
+    name: synator
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: synator
@@ -54,4 +54,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: theykk/synator:v0.13
+          image: theykk/synator:v1.0.0
