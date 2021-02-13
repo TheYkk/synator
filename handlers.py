@@ -3,6 +3,7 @@ import kubernetes
 import os
 
 WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE')
+all_namespaces = []
 if WATCH_NAMESPACE is not None:
     all_namespaces = WATCH_NAMESPACE.split(',')
 
