@@ -20,7 +20,7 @@ rules:
     resources: [events]
     verbs: [create]
   - apiGroups: [""]
-    resources: ["namespaces", "pods", "replicasets"]
+    resources: ["namespaces", "pods", "replicasets", "namespaces/status"]
     verbs: ["*"]
 ---
 kind: ClusterRoleBinding
@@ -54,4 +54,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: theykk/synator:v1.0.0
+          image: theykk/synator:v1.1.0

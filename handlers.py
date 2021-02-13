@@ -96,7 +96,7 @@ def newNamespace(spec, name, meta, logger, **kwargs):
         # TODO: Add configmap
         for secret in api_response.items:
             # Check secret have annotation
-            if secret.metadata.annotations.get("synator/sync") == "yes":
+            if secret.metadata.annotations and secret.metadata.annotations.get("synator/sync") == "yes":
                 secret.metadata.annotations.pop('synator/sync')
                 secret.metadata.resource_version = None
                 secret.metadata.uid = None
@@ -128,7 +128,8 @@ def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
         if pod.metadata.annotations:
             if pod.metadata.annotations.get('synator/reload') == 'configmap:' + meta.name:
                 # Reload pod
-                api.delete_namespaced_pod(pod.metadata.name, pod.metadata.namespace)
+                api.delete_namespaced_pod(
+                    pod.metadata.name, pod.metadata.namespace)
 
 
 @kopf.on.update('', 'v1', 'secrets', when=watch_namespace)
