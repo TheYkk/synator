@@ -1,6 +1,6 @@
 # Synator Kubernetes Secret and ConfigMap synchronizer
 
-Synator synchronize your Secrets and ConfigMaps with your desired namespaces
+Sometimes we want to use secrets in different namespaces, unfortunately, we can’t do without any helper operators or manual copying because in kubernetes secrets and configmaps are namespace. We can copy secrets and configmaps when we have a couple of namespaces and secrets. But when we have dozens of namespaces, it can be very complicated. 
 
 # Usage
 Add annotation `synator/sync=yes` to Secret or ConfigMap. 
@@ -40,7 +40,17 @@ spec:
 # Triggers
  - When update config or secret
  - When create config or secret
- 
+
+# Watching Namespaces
+
+synator Operator installs with cluster wide permissions, however you can optionally control which namespaces it watches by by setting the WATCH_NAMESPACE environment variable.
+
+`WATCH_NAMESPACE` can be omitted entirely, or a comma separated list of k8s namespaces.
+
+- `WATCH_NAMESPACE=""` will watch for resources across the entire cluster.
+- `WATCH_NAMESPACE="foo"` will watch for resources in the foo namespace.
+- `WATCH_NAMESPACE="foo,bar"` will watch for resources in the foo and bar namespace.
+
 # Build and deploy
 Build docker image
 
