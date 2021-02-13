@@ -54,4 +54,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: theykk/synator:v1.0.0
+          image: theykk/synator:v1.1.0
