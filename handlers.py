@@ -2,11 +2,8 @@ import kopf
 import kubernetes
 import os
 
-WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE')
-all_namespaces = []
-if WATCH_NAMESPACE is not None:
-    all_namespaces = WATCH_NAMESPACE.split(',')
-
+WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE', "")
+all_namespaces  = WATCH_NAMESPACE.split(',')
 def watch_namespace(namespace, **_):
     if WATCH_NAMESPACE == "" or namespace in all_namespaces:
         return True
