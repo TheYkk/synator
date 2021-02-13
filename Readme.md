@@ -40,7 +40,17 @@ spec:
 # Triggers
  - When update config or secret
  - When create config or secret
- 
+
+# Watching Namespaces
+
+synator Operator installs with cluster wide permissions, however you can optionally control which namespaces it watches by by setting the WATCH_NAMESPACE environment variable.
+
+`WATCH_NAMESPACE` can be omitted entirely, or a comma separated list of k8s namespaces.
+
+- `WATCH_NAMESPACE=""` will watch for resources across the entire cluster.
+- `WATCH_NAMESPACE="foo"` will watch for resources in the foo namespace.
+- `WATCH_NAMESPACE="foo,bar"` will watch for resources in the foo and bar namespace.
+
 # Build and deploy
 Build docker image
 
