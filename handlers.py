@@ -1,9 +1,19 @@
 import kopf
 import kubernetes
+import os
 
+def watch_namespace(namespace, **_):
+    namespaces = os.getenv('WATCH_NAMESPACE')
+    if namespaces is None or namespaces == "":
+        return True
 
-@kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'})
-@kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'})
+    all_namespaces = namespaces.split(',')
+    if namespace in all_namespaces:
+        return True
+    return False
+   
+@kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
+@kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
 def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
     api = kubernetes.client.CoreV1Api()
     namespace_response = api.list_namespace()
@@ -25,8 +35,8 @@ def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
             api.create_namespaced_secret(ns, secret)
 
 
-@kopf.on.create('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'})
-@kopf.on.update('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'})
+@kopf.on.create('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
+@kopf.on.update('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
 def updateConfigMap(body, meta, spec, status, old, new, diff, **kwargs):
     api = kubernetes.client.CoreV1Api()
     namespace_response = api.list_namespace()
@@ -109,7 +119,7 @@ def newNamespace(spec, name, meta, logger, **kwargs):
 
 # Reload Pod when update configmap or secret
 
-@kopf.on.update('', 'v1', 'configmaps')
+@kopf.on.update('', 'v1', 'configmaps', when=watch_namespace)
 def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
     # Get namespace
     ns = meta.namespace
@@ -124,7 +134,7 @@ def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
                 api.delete_namespaced_pod(pod.metadata.name, pod.metadata.namespace)
 
 
-@kopf.on.update('', 'v1', 'secrets')
+@kopf.on.update('', 'v1', 'secrets', when=watch_namespace)
 def reload_pod_secret(body, meta, spec, status, old, new, diff, **kwargs):
     # Get namespace
     ns = meta.namespace
