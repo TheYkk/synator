@@ -2,16 +2,15 @@ import kopf
 import kubernetes
 import os
 
-def watch_namespace(namespace, **_):
-    namespaces = os.getenv('WATCH_NAMESPACE')
-    if namespaces is None or namespaces == "":
-        return True
+WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE')
+if WATCH_NAMESPACE is not None:
+    all_namespaces = WATCH_NAMESPACE.split(',')
 
-    all_namespaces = namespaces.split(',')
-    if namespace in all_namespaces:
+def watch_namespace(namespace, **_):
+    if WATCH_NAMESPACE == "" or namespace in all_namespaces:
         return True
     return False
-   
+
 @kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
 @kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
 def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
