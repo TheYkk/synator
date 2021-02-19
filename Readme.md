@@ -12,6 +12,10 @@ namespaces, or exclude the namespaces from the sync.
 # Reload pod when config upgraded
 Add annotation `synator/reload: "secret:example"` to pod or deployment template
 When secret example updated busybox pod will reload
+
+Note: For multiple secrte or configmap:
+`synator/reload: "secret:example,secret:example2,configmap:example..."`
+
 ```
 apiVersion: apps/v1
 kind: Deployment
