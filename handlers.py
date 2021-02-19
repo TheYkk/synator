@@ -125,8 +125,8 @@ def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
     print(ns, meta.name)
     for pod in pods.items:
         # Find which pods use this secrets
-        if pod.metadata.annotations:
-            if pod.metadata.annotations.get('synator/reload') == 'configmap:' + meta.name:
+        if pod.metadata.annotations and annotations.get('synator/reload'):
+            if any('configmap:' + name in s for s in annotations.get('synator/reload').split(',')):
                 # Reload pod
                 api.delete_namespaced_pod(
                     pod.metadata.name, pod.metadata.namespace)
@@ -141,8 +141,8 @@ def reload_pod_secret(body, meta, spec, status, old, new, diff, **kwargs):
     print(ns, meta.name)
     for pod in pods.items:
         # Find which pods use this secrets
-        if pod.metadata.annotations:
-            if pod.metadata.annotations.get('synator/reload') == 'secret:' + meta.name:
+        if pod.metadata.annotations and annotations.get('synator/reload'):
+            if any('secret:' + name in s for s in annotations.get('synator/reload').split(',')):
                 # Reload pod
                 api.delete_namespaced_pod(
                     pod.metadata.name, pod.metadata.namespace)
