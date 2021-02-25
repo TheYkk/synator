@@ -3,6 +3,8 @@
 Sometimes we want to use secrets in different namespaces, unfortunately, we can’t do without any helper operators or manual copying because in kubernetes secrets and configmaps are namespace. We can copy secrets and configmaps when we have a couple of namespaces and secrets. But when we have dozens of namespaces, it can be very complicated. 
 
 Synator uses [kopf](https://github.com/nolar/kopf) python framework. Its easy to use.
+
+[Medium writeup](https://itnext.io/kubernetes-secret-and-configmap-sync-6c6b9f906b0d)
 ## Deployment
 It’s easy to use synator on K8s. All we have to do is deploy [deploy.yml](https://github.com/TheYkk/synator/blob/master/deploy.yml) to Kubernetes.
 
