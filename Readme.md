@@ -9,7 +9,7 @@ namespaces, or exclude the namespaces from the sync.
 `synator/include-namespaces='namespace1,namespace2'`
 `synator/exclude-namespaces='kube-system,kube-node-lease'`
 
-# Reload pod when config upgraded
+# Reload deployment when config upgraded
 Add annotation `synator/reload: "secret:example"` to pod or deployment template
 When secret example updated busybox pod will reload
 
