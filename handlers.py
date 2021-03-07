@@ -148,13 +148,13 @@ def reload_deployments_sync(meta, secretOrConfigmap, logger):
 
 def update_deployment(api, deployment, logger):
     # Update revision
-    revision = deployment.spec.template.metadata.annotations.get('deployment.neoassist/revision')
+    revision = deployment.spec.template.metadata.annotations.get('synator/revision')
     if revision is None:
         revision = 1
     else:
         revision = int(revision) + 1
 
-    deployment.spec.template.metadata.annotations['deployment.neoassist/revision'] = str(revision)
+    deployment.spec.template.metadata.annotations['synator/revision'] = str(revision)
 
     # Update the deployment
     api_response = api.patch_namespaced_deployment(
