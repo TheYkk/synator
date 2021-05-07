@@ -21,10 +21,11 @@ For only sync in this namespaces:
 Sync all namespaces excludes this namespaces:
 `synator/exclude-namespaces='kube-system,kube-node-lease'`
 
+# Reload deployment when config upgraded
+=======
 ![secret.yaml](https://miro.medium.com/max/2400/1*UH4iTu3Gg6DkofHyX2KDHg.png)
 
-## Reload pod when config upgraded
-Add annotation `synator/reload: "secret:example"` to pod or deployment template
+Add annotation `synator/reload: "secret:example"` to deployment template
 When secret example updated busybox pod will reload
 
 Note: For multiple secrte or configmap:

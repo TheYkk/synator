@@ -11,7 +11,7 @@ metadata:
   name: synator
 rules:
   - apiGroups: [""]
-    resources: ["secrets", "configmaps"]
+    resources: ["secrets", "configmaps", "deployments"]
     verbs: ["*"]
   - apiGroups: [events.k8s.io]
     resources: [events]
@@ -20,7 +20,11 @@ rules:
     resources: [events]
     verbs: [create]
   - apiGroups: [""]
-    resources: ["namespaces", "pods", "replicasets", "namespaces/status"]
+    resources:
+      ["namespaces", "pods", "replicasets", "deployments", "namespaces/status"]
+    verbs: ["*"]
+  - apiGroups: ["extensions", "apps"]
+    resources: ["deployments"]
     verbs: ["*"]
 ---
 kind: ClusterRoleBinding
