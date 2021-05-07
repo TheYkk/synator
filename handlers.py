@@ -19,6 +19,7 @@ def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
 
     secret = api.read_namespaced_secret(meta.name, meta.namespace)
     secret.metadata.annotations.pop('synator/sync')
+    secret.metadata.annotations.pop('field.cattle.io/projectId')
     secret.metadata.resource_version = None
     secret.metadata.uid = None
     for ns in parse_target_namespaces(meta, namespaces):
@@ -42,6 +43,7 @@ def updateConfigMap(body, meta, spec, status, old, new, diff, **kwargs):
 
     cfg = api.read_namespaced_config_map(meta.name, meta.namespace)
     cfg.metadata.annotations.pop('synator/sync')
+    cfg.metadata.annotations.pop('field.cattle.io/projectId')
     cfg.metadata.resource_version = None
     cfg.metadata.uid = None
     for ns in parse_target_namespaces(meta, namespaces):
@@ -98,6 +100,7 @@ def newNamespace(spec, name, meta, logger, **kwargs):
             # Check secret have annotation
             if secret.metadata.annotations and secret.metadata.annotations.get("synator/sync") == "yes":
                 secret.metadata.annotations.pop('synator/sync')
+                secret.metadata.annotations.pop('field.cattle.io/projectId')
                 secret.metadata.resource_version = None
                 secret.metadata.uid = None
                 for ns in parse_target_namespaces(secret.metadata, [name]):
