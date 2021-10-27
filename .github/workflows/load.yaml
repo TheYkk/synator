@@ -1,0 +1,49 @@
+name: Load release
+on:
+  pull_request_review:
+    types: [submitted, edited]
+env:
+  MANIFESTS_REPO: "voiapp/argo-cd-apps"
+  MANIFESTS_REPO_BRANCH: "main"
+
+jobs:
+  image_create:
+    name: Create and push image
+    runs-on: ubuntu-latest
+    if: contains(github.event.review.body, 'deploy to load please')
+
+    outputs:
+      short_sha: ${{ steps.get_sha.outputs.short_sha }}
+
+    steps:
+    - name: Checkout service code
+      uses: actions/checkout@v2
+
+    - name: Create image
+      shell: bash
+      run: |
+        echo "${{ secrets.GCLOUD_SERVICE_ACCOUNT }}" | base64 -d | docker login -u _json_key --password-stdin https://eu.gcr.io
+        TAG_NAME=PR-${{ github.event.pull_request.number }} make push
+
+    - name: Get short SHA
+      id: get_sha
+      shell: bash
+      run: echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
+
+  load_deploy:
+    needs: image_create
+    name: Deploy to load
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout manifest code
+      uses: actions/checkout@v2
+      with:
+        repository: ${{ env.MANIFESTS_REPO }}
+        ref: ${{ env.MANIFESTS_REPO_BRANCH }}
+        ssh-key: ${{ secrets.ARGO_CD_APPS_REPO_TOKEN }}
+
+    - name: Release code
+      uses: voiapp/actions/argo-cd-release-staging@master
+      with:
+        short-sha: ${{needs.image_create.outputs.short_sha}}
+        environment: load
