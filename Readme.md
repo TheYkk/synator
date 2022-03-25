@@ -29,13 +29,13 @@ Sync all namespaces excludes this namespaces:
 
 ## Watching Namespaces
 
-synator Operator installs with cluster wide permissions, however you can optionally control which namespaces it watches by by setting the WATCH_NAMESPACE environment variable.
+synator Operator installs with cluster wide permissions, however you can optionally control which namespaces it watches by by setting the WATCHED_NAMESPACES environment variable.
 
-`WATCH_NAMESPACE` can be omitted entirely, or a comma separated list of k8s namespaces.
+`WATCHED_NAMESPACES` can be omitted entirely, or a comma separated list of k8s namespaces.
 
-- `WATCH_NAMESPACE=""` will watch for resources across the entire cluster.
-- `WATCH_NAMESPACE="foo"` will watch for resources in the foo namespace.
-- `WATCH_NAMESPACE="foo,bar"` will watch for resources in the foo and bar namespace.
+- `WATCHED_NAMESPACES=""` will watch for resources across the entire cluster.
+- `WATCHED_NAMESPACES="foo"` will watch for resources in the foo namespace.
+- `WATCHED_NAMESPACES="foo,bar"` will watch for resources in the foo and bar namespace.
 
 ## Build and deploy
 Build docker image

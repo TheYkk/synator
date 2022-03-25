@@ -2,26 +2,29 @@ import kopf
 import kubernetes
 import os
 
-WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE', "")
-all_namespaces  = WATCH_NAMESPACE.split(',')
-def watch_namespace(namespace, **_):
-    if WATCH_NAMESPACE == "" or namespace in all_namespaces:
+watched_namespaces  = os.getenv('WATCHED_NAMESPACES', "").split(',')
+def is_watched_namespace(namespace, **_):
+    if not watched_namespaces or namespace in watched_namespaces:
         return True
     return False
 
-@kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-@kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
+
+@kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=is_watched_namespace)
+@kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=is_watched_namespace)
+def handle_secret(body, meta, spec, status, old, new, diff, **kwargs):
     api = kubernetes.client.CoreV1Api()
+
     namespace_response = api.list_namespace()
-    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
-    namespaces.remove(meta.namespace)
+    all_namespaces = [nsa.metadata.name for nsa in namespace_response.items]
+    all_namespaces.remove(meta.namespace)
+    target_namespaces = filter_target_namespaces(meta, all_namespaces)
 
     secret = api.read_namespaced_secret(meta.name, meta.namespace)
     secret.metadata.annotations.pop('synator/sync')
     secret.metadata.resource_version = None
     secret.metadata.uid = None
-    for ns in parse_target_namespaces(meta, namespaces):
+
+    for ns in target_namespaces:
         secret.metadata.namespace = ns
         # try to pull the Secret object then patch it, try creating it if we can't
         try:
@@ -32,44 +35,47 @@ def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
             api.create_namespaced_secret(ns, secret)
 
 
-@kopf.on.create('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-@kopf.on.update('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-def updateConfigMap(body, meta, spec, status, old, new, diff, **kwargs):
+@kopf.on.create('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=is_watched_namespace)
+@kopf.on.update('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=is_watched_namespace)
+def handle_configMap(body, meta, spec, status, old, new, diff, **kwargs):
     api = kubernetes.client.CoreV1Api()
-    namespace_response = api.list_namespace()
-    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
-    namespaces.remove(meta.namespace)
 
-    cfg = api.read_namespaced_config_map(meta.name, meta.namespace)
-    cfg.metadata.annotations.pop('synator/sync')
-    cfg.metadata.resource_version = None
-    cfg.metadata.uid = None
-    for ns in parse_target_namespaces(meta, namespaces):
-        cfg.metadata.namespace = ns
+    namespace_response = api.list_namespace()
+    all_namespaces = [nsa.metadata.name for nsa in namespace_response.items]
+    all_namespaces.remove(meta.namespace)
+    target_namespaces = filter_target_namespaces(meta, all_namespaces)
+
+    cm = api.read_namespaced_config_map(meta.name, meta.namespace)
+    cm.metadata.annotations.pop('synator/sync')
+    cm.metadata.resource_version = None
+    cm.metadata.uid = None
+
+    for ns in target_namespaces:
+        cm.metadata.namespace = ns
         # try to pull the ConfigMap object then patch it, try to create it if we can't
         try:
             api.read_namespaced_config_map(meta.name, ns)
-            api.patch_namespaced_config_map(meta.name, ns, cfg)
+            api.patch_namespaced_config_map(meta.name, ns, cm)
         except kubernetes.client.rest.ApiException as e:
             print(e.args)
-            api.create_namespaced_config_map(ns, cfg)
+            api.create_namespaced_config_map(ns, cm)
 
 
-def parse_target_namespaces(meta, namespaces):
-    namespace_list = []
+def filter_target_namespaces(meta, namespaces):
+    target_namespaces = []
     # look for a namespace inclusion label first, if we don't find that, assume all namespaces are the target
     if 'synator/include-namespaces' in meta.annotations:
         value = meta.annotations['synator/include-namespaces']
         namespaces_to_include = value.replace(' ', '').split(',')
         for ns in namespaces_to_include:
             if ns in namespaces:
-                namespace_list.append(ns)
+                target_namespaces.append(ns)
             else:
                 print(
                     f"WARNING: include-namespaces requested I add this resource to a non-existing namespace: {ns}")
     else:
         # we didn't find a namespace inclusion label, so let's see if we were told to exclude any
-        namespace_list = namespaces
+        target_namespaces = namespaces
         if 'synator/exclude-namespaces' in meta.annotations:
             value = meta.annotations['synator/exclude-namespaces']
             namespaces_to_exclude = value.replace(' ', '').split(',')
@@ -78,17 +84,17 @@ def parse_target_namespaces(meta, namespaces):
                     "WARNING: exclude-namespaces was specified, but no values were parsed")
 
             for ns in namespaces_to_exclude:
-                if ns in namespace_list:
-                    namespace_list.remove(ns)
+                if ns in target_namespaces:
+                    target_namespaces.remove(ns)
                 else:
                     print(
                         f"WARNING: I was told to exclude namespace {ns}, but it doesn't exist on the cluster")
 
-    return namespace_list
+    return target_namespaces
 
 
 @kopf.on.create('', 'v1', 'namespaces')
-def newNamespace(spec, name, meta, logger, **kwargs):
+def handle_namespace(spec, name, meta, logger, **kwargs):
     api = kubernetes.client.CoreV1Api()
 
     try:
@@ -100,7 +106,7 @@ def newNamespace(spec, name, meta, logger, **kwargs):
                 secret.metadata.annotations.pop('synator/sync')
                 secret.metadata.resource_version = None
                 secret.metadata.uid = None
-                for ns in parse_target_namespaces(secret.metadata, [name]):
+                for ns in filter_target_namespaces(secret.metadata, [name]):
                     secret.metadata.namespace = ns
                     try:
                         api.read_namespaced_secret(
