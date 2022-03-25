@@ -20,7 +20,7 @@ rules:
     resources: [events]
     verbs: [create]
   - apiGroups: [""]
-    resources: ["namespaces", "pods", "replicasets", "namespaces/status"]
+    resources: ["namespaces", "namespaces/status"]
     verbs: ["*"]
 ---
 kind: ClusterRoleBinding

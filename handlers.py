@@ -112,37 +112,3 @@ def newNamespace(spec, name, meta, logger, **kwargs):
                         api.create_namespaced_secret(ns, secret)
     except kubernetes.client.rest.ApiException as e:
         print("Exception when calling CoreV1Api->list_secret_for_all_namespaces: %s\n" % e)
-
-
-# Reload Pod when update configmap or secret
-
-@kopf.on.update('', 'v1', 'configmaps', when=watch_namespace)
-def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
-    # Get namespace
-    ns = meta.namespace
-    api = kubernetes.client.CoreV1Api()
-    pods = api.list_namespaced_pod(ns)
-    print(ns, meta.name)
-    for pod in pods.items:
-        # Find which pods use this secrets
-        if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
-            if any('configmap:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
-                # Reload pod
-                api.delete_namespaced_pod(
-                    pod.metadata.name, pod.metadata.namespace)
-
-
-@kopf.on.update('', 'v1', 'secrets', when=watch_namespace)
-def reload_pod_secret(body, meta, spec, status, old, new, diff, **kwargs):
-    # Get namespace
-    ns = meta.namespace
-    api = kubernetes.client.CoreV1Api()
-    pods = api.list_namespaced_pod(ns)
-    print(ns, meta.name)
-    for pod in pods.items:
-        # Find which pods use this secrets
-        if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
-            if any('secret:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
-                # Reload pod
-                api.delete_namespaced_pod(
-                    pod.metadata.name, pod.metadata.namespace)
