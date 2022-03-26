@@ -4,4 +4,4 @@ RUN pip install kopf kubernetes
 
 ADD . /src
 
-CMD kopf run /src/handlers.py
+CMD kopf run --all-namespaces /src/handlers.py
