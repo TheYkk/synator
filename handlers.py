@@ -162,8 +162,8 @@ def _create_or_update(kind, obj, name, namespace, logger):
             if kind == 'ConfigMap': api.create_namespaced_config_map(namespace, obj)
             elif kind == 'Secret':  api.create_namespaced_secret(namespace, obj)
         else:
-            if kind == 'ConfigMap': api.patch_namespaced_config_map(name, namespace, obj)
-            elif kind == 'Secret':  api.patch_namespaced_secret(name, namespace, obj)
+            if kind == 'ConfigMap': api.replace_namespaced_config_map(name, namespace, obj)
+            elif kind == 'Secret':  api.replace_namespaced_secret(name, namespace, obj)
     except kubernetes.client.ApiException as e:
         logger.error(f"Could not create or update {kind} {namespace}/{name}", e)
 
