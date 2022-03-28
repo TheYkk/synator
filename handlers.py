@@ -13,6 +13,7 @@ EXCLUDE_LABELS_ANNOTATION = 'synator/exclude-labels'
 INCLUDE_ANNOTATIONS_ANNOTATION = 'synator/include-annotations'
 EXCLUDE_ANNOTATIONS_ANNOTATION = 'synator/exclude-annotations'
 DEFAULT_EXCLUDE = 'synator/'
+MANAGED_BY_LABEL = 'synator'
 
 
 watched_namespaces = os.getenv('WATCHED_NAMESPACES', "")
@@ -112,7 +113,7 @@ def _clean(metadata):
 def _set_metadata(obj, name, namespace):
     obj.metadata.name = name
     obj.metadata.namespace = namespace
-    obj.metadata.labels['app.kubernetes.io/managed-by'] = 'synator'
+    obj.metadata.labels['app.kubernetes.io/managed-by'] = MANAGED_BY_LABEL
 
 
 def _get_target_namespaces(source_annotations, source_namespace):
@@ -150,20 +151,21 @@ def _filter(includes, excludes, candidates, exact=True):
 
 def _create_or_update(kind, obj, name, namespace, logger):
     try:
-        if kind == 'ConfigMap': api.read_namespaced_config_map(name, namespace)
-        elif kind == 'Secret':  api.read_namespaced_secret(name, namespace)
-        exists = True
+        if kind == 'ConfigMap': existing = api.read_namespaced_config_map(name, namespace)
+        elif kind == 'Secret':  existing = api.read_namespaced_secret(name, namespace)
     except kubernetes.client.ApiException:
-        exists = False
+        existing = None
 
     try:
         _set_metadata(obj, name, namespace)
-        if not exists:
+        if not existing:
             if kind == 'ConfigMap': api.create_namespaced_config_map(namespace, obj)
             elif kind == 'Secret':  api.create_namespaced_secret(namespace, obj)
-        else:
+        elif existing.metadata.labels and existing.metadata.labels['app.kubernetes.io/managed-by'] == MANAGED_BY_LABEL:
             if kind == 'ConfigMap': api.replace_namespaced_config_map(name, namespace, obj)
             elif kind == 'Secret':  api.replace_namespaced_secret(name, namespace, obj)
+        else:
+            logger.info(f"Not updating {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
     except kubernetes.client.ApiException as e:
         logger.error(f"Could not create or update {kind} {namespace}/{name}", e)
 
@@ -175,7 +177,7 @@ def _delete(kind, name, namespace, logger):
     except kubernetes.client.ApiException:
         return
 
-    if obj.metadata.labels and obj.metadata.labels['app.kubernetes.io/managed-by'] == 'synator':
+    if obj.metadata.labels and obj.metadata.labels['app.kubernetes.io/managed-by'] == MANAGED_BY_LABEL:
         try:
             if kind == 'ConfigMap': api.delete_namespaced_config_map(name, namespace)
             elif kind == 'Secret':  api.delete_namespaced_secret(name, namespace)

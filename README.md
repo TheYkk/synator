@@ -99,6 +99,9 @@ Object creation or update is triggered when:
  - ConfigMap or Secret is labelled with `synator/sync='yes'`
  - ConfigMap or Secret is updated (its essential fields differ from those stored in `kopf.zalando.org/last-handled-configuration`)
  - A Namespace is created
+ 
+Object update is **not** triggered when:
+ - A child object does not have the label `app.kubernetes.io/managed-by=synator`
 
 Object deletion is triggered when:
  - The parent object is deleted
