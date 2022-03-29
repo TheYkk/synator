@@ -1,7 +1,7 @@
 FROM python:3.8-slim
 
-RUN pip install kopf kubernetes
-
 ADD . /src
 
-CMD kopf run /src/handlers.py
+RUN pip install -r /src/requirements.txt
+
+CMD kopf run --all-namespaces /src/handlers.py

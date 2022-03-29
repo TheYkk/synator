@@ -1,148 +1,187 @@
+import copy
+import os
 import kopf
 import kubernetes
-import os
+from prodict import Prodict
 
-WATCH_NAMESPACE = os.getenv('WATCH_NAMESPACE', "")
-all_namespaces  = WATCH_NAMESPACE.split(',')
-def watch_namespace(namespace, **_):
-    if WATCH_NAMESPACE == "" or namespace in all_namespaces:
+
+SYNC_LABEL = 'synator/sync'
+INCLUDE_NAMESPACES_ANNOTATION = 'synator/include-namespaces'
+EXCLUDE_NAMESPACES_ANNOTATION = 'synator/exclude-namespaces'
+INCLUDE_LABELS_ANNOTATION = 'synator/include-labels'
+EXCLUDE_LABELS_ANNOTATION = 'synator/exclude-labels'
+INCLUDE_ANNOTATIONS_ANNOTATION = 'synator/include-annotations'
+EXCLUDE_ANNOTATIONS_ANNOTATION = 'synator/exclude-annotations'
+DEFAULT_EXCLUDE = 'synator/'
+MANAGED_BY_LABEL = 'synator'
+
+
+watched_namespaces = os.getenv('WATCHED_NAMESPACES', "")
+watched_namespaces = watched_namespaces.split(',') if watched_namespaces else []
+
+kubernetes.config.load_config()
+api = kubernetes.client.CoreV1Api()
+
+
+@kopf.on.startup()
+def handle_startup(logger, **_):
+    if watched_namespaces:
+        logger.info(f"Watching namespaces: {watched_namespaces or 'ALL'}")
+
+
+def _is_watched_namespace(namespace, **_):
+    if not watched_namespaces or namespace in watched_namespaces:
         return True
     return False
 
-@kopf.on.create('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-@kopf.on.update('', 'v1', 'secrets', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
-    api = kubernetes.client.CoreV1Api()
-    namespace_response = api.list_namespace()
-    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
-    namespaces.remove(meta.namespace)
 
-    secret = api.read_namespaced_secret(meta.name, meta.namespace)
-    secret.metadata.annotations.pop('synator/sync')
-    secret.metadata.resource_version = None
-    secret.metadata.uid = None
-    for ns in parse_target_namespaces(meta, namespaces):
-        secret.metadata.namespace = ns
-        # try to pull the Secret object then patch it, try creating it if we can't
-        try:
-            api.read_namespaced_secret(meta.name, ns)
-            api.patch_namespaced_secret(meta.name, ns, secret)
-        except kubernetes.client.rest.ApiException as e:
-            print(e.args)
-            api.create_namespaced_secret(ns, secret)
+@kopf.on.create('', 'v1', 'secrets', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.update('', 'v1', 'secrets', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.create('', 'v1', 'configmaps', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.update('', 'v1', 'configmaps', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+def handle_create_or_update(resource, new, name, namespace, annotations, logger, **_):
+    target_namespaces = _get_target_namespaces(annotations, namespace)
+
+    obj = _to_obj(new)
+    _clean(obj.metadata)
+    for target_namespace in target_namespaces:
+        _create_or_update(resource.kind, obj, name, target_namespace, logger)
 
 
-@kopf.on.create('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-@kopf.on.update('', 'v1', 'configmaps', annotations={'synator/sync': 'yes'}, when=watch_namespace)
-def updateConfigMap(body, meta, spec, status, old, new, diff, **kwargs):
-    api = kubernetes.client.CoreV1Api()
-    namespace_response = api.list_namespace()
-    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
-    namespaces.remove(meta.namespace)
+@kopf.on.delete('', 'v1', 'secrets', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.delete('', 'v1', 'configmaps', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
+def handle_delete(resource, name, namespace, annotations, logger, **_):
+    target_namespaces = _get_target_namespaces(annotations, namespace)
 
-    cfg = api.read_namespaced_config_map(meta.name, meta.namespace)
-    cfg.metadata.annotations.pop('synator/sync')
-    cfg.metadata.resource_version = None
-    cfg.metadata.uid = None
-    for ns in parse_target_namespaces(meta, namespaces):
-        cfg.metadata.namespace = ns
-        # try to pull the ConfigMap object then patch it, try to create it if we can't
-        try:
-            api.read_namespaced_config_map(meta.name, ns)
-            api.patch_namespaced_config_map(meta.name, ns, cfg)
-        except kubernetes.client.rest.ApiException as e:
-            print(e.args)
-            api.create_namespaced_config_map(ns, cfg)
-
-
-def parse_target_namespaces(meta, namespaces):
-    namespace_list = []
-    # look for a namespace inclusion label first, if we don't find that, assume all namespaces are the target
-    if 'synator/include-namespaces' in meta.annotations:
-        value = meta.annotations['synator/include-namespaces']
-        namespaces_to_include = value.replace(' ', '').split(',')
-        for ns in namespaces_to_include:
-            if ns in namespaces:
-                namespace_list.append(ns)
-            else:
-                print(
-                    f"WARNING: include-namespaces requested I add this resource to a non-existing namespace: {ns}")
-    else:
-        # we didn't find a namespace inclusion label, so let's see if we were told to exclude any
-        namespace_list = namespaces
-        if 'synator/exclude-namespaces' in meta.annotations:
-            value = meta.annotations['synator/exclude-namespaces']
-            namespaces_to_exclude = value.replace(' ', '').split(',')
-            if len(namespaces_to_exclude) < 1:
-                print(
-                    "WARNING: exclude-namespaces was specified, but no values were parsed")
-
-            for ns in namespaces_to_exclude:
-                if ns in namespace_list:
-                    namespace_list.remove(ns)
-                else:
-                    print(
-                        f"WARNING: I was told to exclude namespace {ns}, but it doesn't exist on the cluster")
-
-    return namespace_list
+    for target_namespace in target_namespaces:
+        _delete(resource.kind, name, target_namespace, logger)
 
 
 @kopf.on.create('', 'v1', 'namespaces')
-def newNamespace(spec, name, meta, logger, **kwargs):
-    api = kubernetes.client.CoreV1Api()
+def handle_create_namespace(name, logger, **_):
+    api_response = api.list_secret_for_all_namespaces(label_selector=f'{SYNC_LABEL}==yes')
+    for secret in api_response.items:
+        new_secret = _copy(secret)
+        _clean(new_secret.metadata)
+        for target_namespace in _filter_target_namespaces(secret.metadata.annotations, [name]):
+            _create_or_update('Secret', new_secret, secret.metadata.name, target_namespace, logger)
+
+    api_response = api.list_config_map_for_all_namespaces(label_selector=f'{SYNC_LABEL}==yes')
+    for configmap in api_response.items:
+        new_configmap = _copy(configmap)
+        _clean(new_configmap.metadata)
+        for target_namespace in _filter_target_namespaces(configmap.metadata.annotations, [name]):
+            _create_or_update('ConfigMap', new_configmap, configmap.metadata.name, target_namespace, logger)
+
+
+def _copy(obj):
+    d = obj.to_dict()
+    # Remove "non-essential" (system) fields
+    d = kopf.AnnotationsDiffBaseStorage().build(body=kopf.Body(d))
+    return _to_obj(d)
+
+
+def _to_obj(d: dict):
+    """
+    This method exists because the Kubernetes API does not allow making an object out of a dictionary
+    with sensible default values.
+    """
+
+    d = copy.deepcopy(d)
+
+    # Restore essential fields
+    if 'metadata' not in d:
+        d['metadata'] = {}
+    if 'labels' not in d['metadata']:
+        d['metadata']['labels'] = {}
+    if 'annotations' not in d['metadata']:
+        d['metadata']['annotations'] = {}
+
+    return Prodict.from_dict(d)
+
+
+def _clean(metadata):
+    label_includes = metadata.annotations.get(INCLUDE_LABELS_ANNOTATION)
+    label_excludes = (metadata.annotations.get(EXCLUDE_LABELS_ANNOTATION) or "") + f',{DEFAULT_EXCLUDE}'
+    metadata.labels = _filter(label_includes, label_excludes, metadata.labels, exact=False)
+
+    annotation_includes = metadata.annotations.get(INCLUDE_ANNOTATIONS_ANNOTATION)
+    annotation_excludes = (metadata.annotations.get(EXCLUDE_ANNOTATIONS_ANNOTATION) or "") + f',{DEFAULT_EXCLUDE}'
+    metadata.annotations = _filter(annotation_includes, annotation_excludes, metadata.annotations, exact=False)
+
+
+def _set_metadata(obj, name, namespace):
+    obj.metadata.name = name
+    obj.metadata.namespace = namespace
+    obj.metadata.labels['app.kubernetes.io/managed-by'] = MANAGED_BY_LABEL
+
+
+def _get_target_namespaces(source_annotations, source_namespace):
+    namespace_response = api.list_namespace()
+    all_namespaces = [nsa.metadata.name for nsa in namespace_response.items]
+    all_namespaces.remove(source_namespace)
+    return _filter_target_namespaces(source_annotations, all_namespaces)
+
+
+def _filter_target_namespaces(source_annotations, candidate_namespaces):
+    return _filter(source_annotations.get(INCLUDE_NAMESPACES_ANNOTATION),
+                   source_annotations.get(EXCLUDE_NAMESPACES_ANNOTATION),
+                   candidate_namespaces)
+
+
+def _filter(includes, excludes, candidates, exact=True):
+    if includes:
+        includes = includes.replace(' ', '').split(',')
+        includes = [i for i in includes if i]  # remove blank
+    if excludes:
+        excludes = excludes.replace(' ', '').split(',')
+        excludes = [i for i in excludes if i]  # remove blank
+
+    filtered = candidates.copy()
+    for item in filtered.copy():
+        if (includes and not any(pattern == item if exact else item.startswith(pattern) for pattern in includes)) \
+                or (excludes and any(pattern == item if exact else item.startswith(pattern) for pattern in excludes)):
+            if isinstance(filtered, list):
+                filtered.remove(item)
+            else:
+                del filtered[item]
+
+    return filtered
+
+
+def _create_or_update(kind, obj, name, namespace, logger):
+    try:
+        if kind == 'ConfigMap': existing = api.read_namespaced_config_map(name, namespace)
+        elif kind == 'Secret':  existing = api.read_namespaced_secret(name, namespace)
+    except kubernetes.client.ApiException:
+        existing = None
 
     try:
-        api_response = api.list_secret_for_all_namespaces()
-        # TODO: Add configmap
-        for secret in api_response.items:
-            # Check secret have annotation
-            if secret.metadata.annotations and secret.metadata.annotations.get("synator/sync") == "yes":
-                secret.metadata.annotations.pop('synator/sync')
-                secret.metadata.resource_version = None
-                secret.metadata.uid = None
-                for ns in parse_target_namespaces(secret.metadata, [name]):
-                    secret.metadata.namespace = ns
-                    try:
-                        api.read_namespaced_secret(
-                            secret.metadata.name, ns)
-                        api.patch_namespaced_secret(
-                            secret.metadata.name, ns, secret)
-                    except kubernetes.client.rest.ApiException as e:
-                        print(e.args)
-                        api.create_namespaced_secret(ns, secret)
-    except kubernetes.client.rest.ApiException as e:
-        print("Exception when calling CoreV1Api->list_secret_for_all_namespaces: %s\n" % e)
+        _set_metadata(obj, name, namespace)
+        if not existing:
+            if kind == 'ConfigMap': api.create_namespaced_config_map(namespace, obj)
+            elif kind == 'Secret':  api.create_namespaced_secret(namespace, obj)
+        elif existing.metadata.labels and existing.metadata.labels['app.kubernetes.io/managed-by'] == MANAGED_BY_LABEL:
+            if kind == 'ConfigMap': api.replace_namespaced_config_map(name, namespace, obj)
+            elif kind == 'Secret':  api.replace_namespaced_secret(name, namespace, obj)
+        else:
+            logger.info(f"Not updating {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
+    except kubernetes.client.ApiException as e:
+        logger.error(f"Could not create or update {kind} {namespace}/{name}", e)
 
 
-# Reload Pod when update configmap or secret
+def _delete(kind, name, namespace, logger):
+    try:
+        if kind == 'ConfigMap': obj = api.read_namespaced_config_map(name, namespace)
+        elif kind == 'Secret':  obj = api.read_namespaced_secret(name, namespace)
+    except kubernetes.client.ApiException:
+        return
 
-@kopf.on.update('', 'v1', 'configmaps', when=watch_namespace)
-def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
-    # Get namespace
-    ns = meta.namespace
-    api = kubernetes.client.CoreV1Api()
-    pods = api.list_namespaced_pod(ns)
-    print(ns, meta.name)
-    for pod in pods.items:
-        # Find which pods use this secrets
-        if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
-            if any('configmap:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
-                # Reload pod
-                api.delete_namespaced_pod(
-                    pod.metadata.name, pod.metadata.namespace)
-
-
-@kopf.on.update('', 'v1', 'secrets', when=watch_namespace)
-def reload_pod_secret(body, meta, spec, status, old, new, diff, **kwargs):
-    # Get namespace
-    ns = meta.namespace
-    api = kubernetes.client.CoreV1Api()
-    pods = api.list_namespaced_pod(ns)
-    print(ns, meta.name)
-    for pod in pods.items:
-        # Find which pods use this secrets
-        if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
-            if any('secret:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
-                # Reload pod
-                api.delete_namespaced_pod(
-                    pod.metadata.name, pod.metadata.namespace)
+    if obj.metadata.labels and obj.metadata.labels['app.kubernetes.io/managed-by'] == MANAGED_BY_LABEL:
+        try:
+            if kind == 'ConfigMap': api.delete_namespaced_config_map(name, namespace)
+            elif kind == 'Secret':  api.delete_namespaced_secret(name, namespace)
+        except kubernetes.client.ApiException as e:
+            logger.error(f"Could not delete {kind} {namespace}/{name}", e)
+    else:
+        logger.info(f"Not deleting {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
