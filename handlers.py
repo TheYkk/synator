@@ -20,6 +20,7 @@ def update_secret(body, meta, spec, status, old, new, diff, **kwargs):
     secret = api.read_namespaced_secret(meta.name, meta.namespace)
     secret.metadata.annotations.pop('synator/sync')
     secret.metadata.resource_version = None
+    secret.metadata.owner_references = None
     secret.metadata.uid = None
     for ns in parse_target_namespaces(meta, namespaces):
         secret.metadata.namespace = ns
@@ -43,6 +44,7 @@ def updateConfigMap(body, meta, spec, status, old, new, diff, **kwargs):
     cfg = api.read_namespaced_config_map(meta.name, meta.namespace)
     cfg.metadata.annotations.pop('synator/sync')
     cfg.metadata.resource_version = None
+    cfg.metadata.owner_references = None
     cfg.metadata.uid = None
     for ns in parse_target_namespaces(meta, namespaces):
         cfg.metadata.namespace = ns
@@ -66,7 +68,7 @@ def parse_target_namespaces(meta, namespaces):
                 namespace_list.append(ns)
             else:
                 print(
-                    f"WARNING: include-namespaces requested I add this resource to a non-existing namespace: {ns}")
+                    f"WARNING: include-namespaces list contains a non-existing namespace: {ns}")
     else:
         # we didn't find a namespace inclusion label, so let's see if we were told to exclude any
         namespace_list = namespaces
@@ -93,12 +95,12 @@ def newNamespace(spec, name, meta, logger, **kwargs):
 
     try:
         api_response = api.list_secret_for_all_namespaces()
-        # TODO: Add configmap
         for secret in api_response.items:
-            # Check secret have annotation
+            # Check if secret has annotation
             if secret.metadata.annotations and secret.metadata.annotations.get("synator/sync") == "yes":
                 secret.metadata.annotations.pop('synator/sync')
                 secret.metadata.resource_version = None
+                secret.metadata.owner_references = None
                 secret.metadata.uid = None
                 for ns in parse_target_namespaces(secret.metadata, [name]):
                     secret.metadata.namespace = ns
@@ -113,8 +115,32 @@ def newNamespace(spec, name, meta, logger, **kwargs):
     except kubernetes.client.rest.ApiException as e:
         print("Exception when calling CoreV1Api->list_secret_for_all_namespaces: %s\n" % e)
 
+    namespace_response = api.list_namespace()
+    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
+    for cfg_namespace in namespaces:
+        try:
+            api_response = api.list_namespaced_config_map(cfg_namespace)
+            for cfg in api_response.items:
+                # Check if configmap has annotation
+                if cfg.metadata.annotations and cfg.metadata.annotations.get("synator/sync") == "yes":
+                    cfg.metadata.annotations.pop('synator/sync')
+                    cfg.metadata.resource_version = None
+                    cfg.metadata.owner_references = None
+                    cfg.metadata.uid = None
+                    for ns in parse_target_namespaces(cfg.metadata, [name]):
+                        cfg.metadata.namespace = ns
+                        try:
+                            api.read_namespaced_config_map(
+                                cfg.metadata.name, ns)
+                            api.patch_namespaced_config_map(
+                                cfg.metadata.name, ns, cfg)
+                        except kubernetes.client.rest.ApiException as e:
+                            print(e.args)
+                            api.create_namespaced_config_map(ns, cfg)
+        except kubernetes.client.rest.ApiException as e:
+            print("Exception when calling CoreV1Api->list_namespaced_config_map: %s\n" % e)
 
-# Reload Pod when update configmap or secret
+# Reload Pod on configmap or secret object update
 
 @kopf.on.update('', 'v1', 'configmaps', when=watch_namespace)
 def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
@@ -124,7 +150,7 @@ def reload_pod_config(body, meta, spec, status, old, new, diff, **kwargs):
     pods = api.list_namespaced_pod(ns)
     print(ns, meta.name)
     for pod in pods.items:
-        # Find which pods use this secrets
+        # Find which pods use these configmaps
         if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
             if any('configmap:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
                 # Reload pod
@@ -140,7 +166,7 @@ def reload_pod_secret(body, meta, spec, status, old, new, diff, **kwargs):
     pods = api.list_namespaced_pod(ns)
     print(ns, meta.name)
     for pod in pods.items:
-        # Find which pods use this secrets
+        # Find which pods use these secrets
         if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
             if any('secret:' + meta.name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
                 # Reload pod
