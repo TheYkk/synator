@@ -93,6 +93,7 @@ def parse_target_namespaces(meta, namespaces):
 def newNamespace(spec, name, meta, logger, **kwargs):
     api = kubernetes.client.CoreV1Api()
 
+    # Check all secrets
     try:
         api_response = api.list_secret_for_all_namespaces()
         for secret in api_response.items:
@@ -115,30 +116,28 @@ def newNamespace(spec, name, meta, logger, **kwargs):
     except kubernetes.client.rest.ApiException as e:
         print("Exception when calling CoreV1Api->list_secret_for_all_namespaces: %s\n" % e)
 
-    namespace_response = api.list_namespace()
-    namespaces = [nsa.metadata.name for nsa in namespace_response.items]
-    for cfg_namespace in namespaces:
-        try:
-            api_response = api.list_namespaced_config_map(cfg_namespace)
-            for cfg in api_response.items:
-                # Check if configmap has annotation
-                if cfg.metadata.annotations and cfg.metadata.annotations.get("synator/sync") == "yes":
-                    cfg.metadata.annotations.pop('synator/sync')
-                    cfg.metadata.resource_version = None
-                    cfg.metadata.owner_references = None
-                    cfg.metadata.uid = None
-                    for ns in parse_target_namespaces(cfg.metadata, [name]):
-                        cfg.metadata.namespace = ns
-                        try:
-                            api.read_namespaced_config_map(
-                                cfg.metadata.name, ns)
-                            api.patch_namespaced_config_map(
-                                cfg.metadata.name, ns, cfg)
-                        except kubernetes.client.rest.ApiException as e:
-                            print(e.args)
-                            api.create_namespaced_config_map(ns, cfg)
-        except kubernetes.client.rest.ApiException as e:
-            print("Exception when calling CoreV1Api->list_namespaced_config_map: %s\n" % e)
+    # Check all configmaps
+    try:
+        api_response = api.list_config_map_for_all_namespaces()
+        for cfg in api_response.items:
+            # Check if configmap has annotation
+            if cfg.metadata.annotations and cfg.metadata.annotations.get("synator/sync") == "yes":
+                cfg.metadata.annotations.pop('synator/sync')
+                cfg.metadata.resource_version = None
+                cfg.metadata.owner_references = None
+                cfg.metadata.uid = None
+                for ns in parse_target_namespaces(cfg.metadata, [name]):
+                    cfg.metadata.namespace = ns
+                    try:
+                        api.read_namespaced_config_map(
+                            cfg.metadata.name, ns)
+                        api.patch_namespaced_config_map(
+                            cfg.metadata.name, ns, cfg)
+                    except kubernetes.client.rest.ApiException as e:
+                        print(e.args)
+                        api.create_namespaced_config_map(ns, cfg)
+    except kubernetes.client.rest.ApiException as e:
+        print("Exception when calling CoreV1Api->list_config_map_for_all_namespaces: %s\n" % e)
 
 # Reload Pod on configmap or secret object update
 
