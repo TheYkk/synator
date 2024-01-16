@@ -57,4 +57,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: slax81/sync:v1.83
+          image: slax81/synator:v1.2.0
