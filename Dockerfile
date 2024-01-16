@@ -1,7 +1,14 @@
-FROM python:3.8-slim
+FROM python:3.11-slim
 
-RUN pip install kopf kubernetes
+RUN mkdir /src
 
-ADD . /src
+ADD ./handlers.py /src
 
-CMD kopf run /src/handlers.py
+WORKDIR /src
+
+RUN apt update && apt upgrade -y && \
+    python -m pip install --upgrade pip && \
+    pip install kopf kubernetes && \
+    apt clean && apt autoremove --yes
+
+CMD kopf run handlers.py --all-namespaces
